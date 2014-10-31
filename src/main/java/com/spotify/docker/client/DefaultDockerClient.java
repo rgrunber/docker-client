@@ -49,7 +49,6 @@ import org.apache.http.conn.socket.PlainConnectionSocketFactory;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.glassfish.jersey.apache.connector.ApacheClientProperties;
-import org.glassfish.jersey.apache.connector.ApacheConnectorProvider;
 import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.client.ClientProperties;
 import org.glassfish.jersey.client.RequestEntityProcessing;
@@ -184,7 +183,6 @@ public class DefaultDockerClient implements DockerClient, Closeable {
     }
 
     final ClientConfig config = DEFAULT_CONFIG
-        .connectorProvider(new ApacheConnectorProvider())
         .property(ClientProperties.CONNECT_TIMEOUT, (int) builder.connectTimeoutMillis)
         .property(ClientProperties.READ_TIMEOUT, (int) builder.readTimeoutMillis)
         .property(ApacheClientProperties.CONNECTION_MANAGER,
@@ -422,7 +420,8 @@ public class DefaultDockerClient implements DockerClient, Closeable {
       // Wait forever
       return request(POST, ContainerExit.class, resource,
                      resource.request(APPLICATION_JSON_TYPE)
-                             .property(ClientProperties.READ_TIMEOUT, 0));
+                             .property(ClientProperties.READ_TIMEOUT, 0)
+                     .property(ClientProperties.CONNECT_TIMEOUT, 0));
     } catch (DockerRequestException e) {
       switch (e.status()) {
         case 404:
