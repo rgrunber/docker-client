@@ -22,7 +22,6 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.io.Resources;
 import com.google.common.util.concurrent.SettableFuture;
-
 import com.fasterxml.jackson.databind.util.StdDateFormat;
 import com.spotify.docker.client.DockerClient.AttachParameter;
 import com.spotify.docker.client.messages.AuthConfig;
@@ -64,6 +63,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -84,6 +84,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.google.common.base.Charsets.UTF_8;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.spotify.docker.client.DefaultDockerClient.NO_TIMEOUT;
@@ -164,7 +165,7 @@ public class DefaultDockerClientTest {
     authConfig = AuthConfig.builder().email(AUTH_EMAIL).username(AUTH_USERNAME)
         .password(AUTH_PASSWORD).build();
     final DefaultDockerClient.Builder builder = DefaultDockerClient.fromEnv();
-    builder.readTimeoutMillis(120000);
+    builder.readTimeoutMillis(5000);
     dockerEndpoint = builder.uri();
 
     sut = builder.build();
@@ -1219,26 +1220,30 @@ public class DefaultDockerClientTest {
 
   @Test
   public void testAttachLog() throws Exception {
-    sut.pull(BUSYBOX_LATEST);
+    sut.pull("fedora:22");
 
     final String volumeContainer = randomName();
 
     final ContainerConfig volumeConfig = ContainerConfig.builder()
-        .image(BUSYBOX_LATEST)
-        .volumes("/foo")
-        .cmd("ls", "-la")
+        .image("fedora:22")
+        .cmd("sh", "-c", "for i in {1..7}; do sleep ${i}s ; echo \"Seen output after ${i} seconds.\" ; done;")
         .build();
     sut.createContainer(volumeConfig, volumeContainer);
     sut.startContainer(volumeContainer);
 
-    final String logs;
     try (LogStream stream = sut.attachContainer(volumeContainer,
-        AttachParameter.LOGS, AttachParameter.STDOUT,
-        AttachParameter.STDERR, AttachParameter.STREAM)) {
-      logs = stream.readFully();
+        AttachParameter.STDOUT,
+        AttachParameter.STDERR, AttachParameter.STREAM, AttachParameter.STDIN)) {
+        try {
+            while (stream.hasNext()) {
+                System.out.println(UTF_8.decode(stream.next().content()));
+            }
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
     }
-    assertThat(logs, containsString("total"));
 
+    System.out.println("Reading has finished, waiting for program to end.");
     sut.waitContainer(volumeContainer);
     final ContainerInfo info = sut.inspectContainer(volumeContainer);
     assertThat(info.state().running(), is(false));
