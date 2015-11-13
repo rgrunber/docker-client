@@ -1256,11 +1256,16 @@ public class DefaultDockerClientTest {
         .image(BUSYBOX_LATEST)
         .volumes("/foo")
         .cmd("ls", "-la")
+//        Comment out above line, and uncomment below line to avoid the hang in read()
+//        .cmd("sh", "-c", "ls -la ; sleep 3s")
         .build();
     sut.createContainer(volumeConfig, volumeContainer);
     sut.startContainer(volumeContainer);
 
     final String logs;
+    final int seconds = 3;
+//  Comment out below line to avoid the hang in read()
+    Thread.sleep(seconds * 1000);
     try (LogStream stream = sut.attachContainer(volumeContainer,
         AttachParameter.LOGS, AttachParameter.STDOUT,
         AttachParameter.STDERR, AttachParameter.STREAM)) {
