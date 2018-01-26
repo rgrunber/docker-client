@@ -1005,6 +1005,7 @@ public class DefaultDockerClientTest {
     // Create container
     final ContainerConfig config = ContainerConfig.builder()
         .image(BUSYBOX_LATEST)
+        .cmd("/bin/sh", "-c", "while :; do sleep 1; done")
         .build();
     final String name = randomName();
     final ContainerCreation creation = sut.createContainer(config, name);
@@ -1021,6 +1022,54 @@ public class DefaultDockerClientTest {
 
     // Check that some common files exist
     assertThat(files.build(), both(hasItem("bin/")).and(hasItem("bin/wc")));
+
+    sut.startContainer(id);
+
+    final int sizeInMb = 400;
+    final int count = (sizeInMb * 1000 * 1000) / 4096;
+    final ExecCreation execCreation = sut.execCreate(
+        id,
+        new String[] {"/bin/dd", "if=/dev/urandom", "of=/tmp/foo.txt", "bs=4k", "count=" + count},
+        ExecCreateParam.attachStdout(),
+        ExecCreateParam.attachStderr());
+    final String execId = execCreation.id();
+
+    log.info("execId = {}", execId);
+
+    final StringBuffer result = new StringBuffer();
+    final LogStream stream = sut.execStart(execCreation.id());
+    try {
+      while (stream.hasNext()) {
+        final String r = UTF_8.decode(stream.next().content()).toString();
+        log.info(r);
+        result.append(r);
+      }
+    } catch (Exception e) {
+      log.info(e.getMessage());
+    }
+
+    final TarArchiveInputStream k =
+        new TarArchiveInputStream(sut.archiveContainer(id, "/tmp/foo.txt"));
+    TarArchiveEntry te = null;
+    sut = null;
+    while ((te = k.getNextTarEntry()) != null) {
+      log.info(te.getName());
+      final long size = te.getSize();
+      final int bufferSize = ((int) size > 4096 ? 4096
+          : (int) size);
+      final byte[] barray = new byte[bufferSize];
+      int res = -1;
+      while ((res = k.read(barray, 0,
+          bufferSize)) > -1) {
+        log.info("Read " + res + " " + k.getBytesRead() + " bytes");
+        System.gc();
+      }
+    }
+    k.close();
+    final long expectedBytes = (count * 4096) + 1536;
+    final long actualBytes = k.getBytesRead();
+    assertEquals(expectedBytes, actualBytes);
+
   }
 
   @Test
